@@ -1,52 +1,52 @@
-﻿using eCommerce.API.Models;
+﻿using Dapper;
+using eCommerce.API.Models;
+using System.Data;
+using System.Data.SqlClient;
 
 namespace eCommerce.API.Repositories;
 
 public class UsuarioRepository : IRepository<Usuario>
 {
-    private static List<Usuario> _db = new()
-    {
-        new Usuario(){Id=1,Nome="Filipe Rodrigues",Email="filipe.rodrigues@gmail.com"},
-        new Usuario(){Id=2,Nome="Marcelo Rodrigues",Email="marcelo.rodrigues@gmail.com"},
-        new Usuario(){Id=3,Nome="Jéssica Rodrigues",Email="jessica.rodrigues@gmail.com"},
-    };
+    private IDbConnection _connection;
 
+    public UsuarioRepository()
+    {
+       _connection = new SqlConnection("Data Source=(localdb)\\MSSQLLocalDB;Initial Catalog=eCommerceDapper;Integrated Security=True");
+    }
+    
+    // ADO.NET > Dapper > EF
     public List<Usuario> Get()
     {
-        return _db;
+        return _connection.Query<Usuario>("SELECT * FROM Usuarios").ToList();
     }
 
     public Usuario Get(int id)
     {
-        return _db.FirstOrDefault(u => u.Id == id);
+        return _connection.QuerySingleOrDefault<Usuario>("SELECT * FROM Usuarios WHERE Id = @Id",new {Id = id});
     }
 
     public void Insert(Usuario usuario)
     {
-        var ultimoUsuario = _db.LastOrDefault();
+        string query = "INSERT INTO Usuarios(Nome, Email, Sexo, RG, CPF, NomeMae, SituacaoCadastro, DataCadastro) VALUES (@Nome, @Email, @Sexo, @RG, @CPF, @NomeMae, @SituacaoCadastro, @DataCadastro);SELECT CAST (SCOPE_IDENTITY() AS INT);";
 
-        if(ultimoUsuario == null)
-        {
-            usuario.Id = 1;
-        }
-        else
-        {
-            usuario.Id = ultimoUsuario.Id + 1;
-        }
-
-        _db.Add(usuario);
+        // Ao invés do usuario poderia ser um objeto anonimo
+        usuario.Id = _connection.Query<int>(query,usuario).Single();
     }
 
     public void Update(Usuario usuario)
     {
-        _db.Remove( _db.FirstOrDefault(u => u.Id == usuario.Id));
-        _db.Add(usuario);
+        string query = "UPDATE Usuarios SET Nome = @Nome,Email = @Email,Sexo = @Sexo,RG = @RG, CPF = @CPF,NomeMae = @NomeMae,SituacaoCadastro = @SituacaoCadastro,DataCadastro = @DataCadastro WHERE Id = @Id";
+
+        _connection.Execute(query, usuario);
     }
 
     public void Delete(int id)
     {
-        _db.Remove(_db.FirstOrDefault(u => u.Id == id));
-    }
+        //string query = $"DELETE Usuarios WHERE Id = {id}";
+        //_connection.Execute(query);
 
+        // Para proteger do SqlInjection
+        _connection.Execute("DELETE Usuarios WHERE Id = @Id", new {Id = id});
+    }
 
 }

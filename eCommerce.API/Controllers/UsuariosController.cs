@@ -36,11 +36,6 @@ public class UsuariosController : ControllerBase
     [HttpPost]
     public IActionResult Post([FromBody]Usuario usuario)
     {
-        if(!ModelState.IsValid)
-        {
-            return BadRequest();
-        }
-
         _repository.Insert(usuario);
         return Ok(usuario);
     }
