@@ -25,19 +25,27 @@ public class UsuariosController : ControllerBase
     {
         var usuario = _repository.Get(id);
 
-        if(usuario == null)
+        if(usuario == null || usuario.Id < 1)
         {
-            return NotFound();
+            return NotFound($"Não encontrado usuario com id = {id}");
         }
-
+        
         return Ok(usuario);
     }
 
     [HttpPost]
     public IActionResult Post([FromBody]Usuario usuario)
     {
-        _repository.Insert(usuario);
-        return Ok(usuario);
+        try
+        {
+            _repository.Insert(usuario);
+            return Ok(usuario);
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(ex.Message);
+        }
+        
     }
 
     [HttpPut]
