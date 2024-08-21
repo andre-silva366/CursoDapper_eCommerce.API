@@ -17,17 +17,68 @@ public class UsuarioRepository : IRepository<Usuario>
     // ADO.NET > Dapper > EF
     public List<Usuario> Get()
     {
-        return _connection.Query<Usuario>("SELECT * FROM Usuarios").ToList();
+        //return _connection.Query<Usuario>("SELECT * FROM Usuarios").ToList();
+
+        List<Usuario> usuarios = [];
+
+        string query = "SELECT * FROM Usuarios AS U LEFT JOIN Contatos C ON C.UsuarioId = U.Id LEFT JOIN EnderecosEntrega AS EE ON EE.UsuarioId = u.Id;";
+
+        // usuario é o principal
+        // Essa função anonima é executava uma vez por linha
+        // Evita duplicidade
+        _connection.Query<Usuario, Contato, EnderecoEntrega, Usuario>(query,
+            (usuario, contato, enderecoEntrega) =>
+            {
+                // Verifica se já existe o usuário
+                if(usuarios.SingleOrDefault(u => u.Id == usuario.Id) == null)
+                {
+                    usuario.EnderecoEntrega = new List<EnderecoEntrega>();
+                    usuario.Contato = contato;
+                    usuarios.Add(usuario);
+                }
+                else
+                {
+                    usuario = usuarios.SingleOrDefault(u => u.Id == usuario.Id);
+                }
+
+                usuario.EnderecoEntrega.Add(enderecoEntrega);
+
+                return usuario;
+            });
+        return usuarios;
     }
 
     public Usuario? Get(int id)
     {
-        return _connection.Query<Usuario,Contato,Usuario>("SELECT * FROM Usuarios as u LEFT JOIN Contatos AS c ON u.Id = c.UsuarioId WHERE U.Id = @Id;", (usuario,contato) => 
-                        { 
-                            usuario.Contato = contato;
-                            return usuario; 
-                        },
-                        new {Id = id}).SingleOrDefault();
+        List<Usuario> usuarios = [];
+
+        string query = "SELECT * FROM Usuarios AS U LEFT JOIN Contatos C ON C.UsuarioId = U.Id LEFT JOIN EnderecosEntrega AS EE ON EE.UsuarioId = u.Id WHERE U.Id = @Id;";
+
+        // usuario é o principal
+        // Essa função anonima é executava uma vez por linha
+        // Evita duplicidade
+        _connection.Query<Usuario, Contato, EnderecoEntrega, Usuario>(query,
+            (usuario, contato, enderecoEntrega) =>
+            {
+                // Verifica se já existe o usuário
+                if (usuarios.SingleOrDefault(u => u.Id == usuario.Id) == null)
+                {
+                    usuario.EnderecoEntrega = new List<EnderecoEntrega>();
+                    usuario.Contato = contato;
+                    usuarios.Add(usuario);
+                }
+                else
+                {
+                    usuario = usuarios.SingleOrDefault(u => u.Id == usuario.Id);
+                }
+
+                usuario.EnderecoEntrega.Add(enderecoEntrega);
+
+                return usuario;
+            },new {Id = id});
+
+        // Para que retorne somente um usuario, foi aproveitada a lógica do método acima
+        return usuarios.SingleOrDefault();
     }
 
     public void Insert(Usuario usuario)
@@ -52,6 +103,18 @@ public class UsuarioRepository : IRepository<Usuario>
                 string queryContato = "INSERT INTO Contatos(UsuarioId,Telefone,Celular) VALUES (@UsuarioId, @Telefone, @Celular);" +
                     "SELECT CAST (SCOPE_IDENTITY() AS INT);";
                 usuario.Contato.Id = _connection.Query<int>(queryContato, usuario.Contato,transaction).Single();
+            }
+
+            // Verificando se o usuario possui endereço de entrega
+            if(usuario.EnderecoEntrega != null && usuario.EnderecoEntrega.Count > 0)
+            {
+                foreach (var enderecoEntrega in usuario.EnderecoEntrega)
+                {
+                    enderecoEntrega.UsuarioId = usuario.Id;
+                    string queryEndereco = "INSERT INTO EnderecosEntrega (UsuarioId, NomeEndereco, CEP, Estado, Cidade, Bairro, Endereco, Numero, Complemento) VALUES (@UsuarioId, @NomeEndereco, @CEP, @Estado, @Cidade, @Bairro, @Endereco, @Numero, @Complemento);SELECT CAST (SCOPE_IDENTITY() AS INT);";
+                    
+                      enderecoEntrega.Id = _connection.Query<int>(queryEndereco, enderecoEntrega, transaction).Single();
+                }
             }
 
             transaction.Commit();
@@ -91,7 +154,22 @@ public class UsuarioRepository : IRepository<Usuario>
             {
                 string queryContato = "UPDATE Contatos SET UsuarioId = @UsuarioId, Telefone = @Telefone, Celular = @Celular WHERE Id = @Id;";
                 _connection.Execute(queryContato, usuario.Contato, transaction);
-            }                        
+            }
+
+            // Deletando os endereços de entrega
+            string queryDeleteEnderecos = "DELETE FROM EnderecosEntrega WHERE UsuarioId = @Id";
+            _connection.Execute(queryDeleteEnderecos, usuario, transaction);
+
+            if (usuario.EnderecoEntrega != null && usuario.EnderecoEntrega.Count > 0)
+            {
+                foreach (var enderecoEntrega in usuario.EnderecoEntrega)
+                {
+                    enderecoEntrega.UsuarioId = usuario.Id;
+                    string queryEndereco = "INSERT INTO EnderecosEntrega (UsuarioId, NomeEndereco, CEP, Estado, Cidade, Bairro, Endereco, Numero, Complemento) VALUES (@UsuarioId, @NomeEndereco, @CEP, @Estado, @Cidade, @Bairro, @Endereco, @Numero, @Complemento);SELECT CAST (SCOPE_IDENTITY() AS INT);";
+
+                    enderecoEntrega.Id = _connection.Query<int>(queryEndereco, enderecoEntrega, transaction).Single();
+                }
+            }
 
             transaction.Commit();
         }
