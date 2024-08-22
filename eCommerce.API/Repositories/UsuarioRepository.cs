@@ -62,7 +62,7 @@ public class UsuarioRepository : IRepository<Usuario>
         return usuarios;
     }
 
-    public Usuario? Get(int id)
+    public Usuario Get(int id)
     {
         List<Usuario> usuarios = [];
         Usuario usuario = new Usuario();
