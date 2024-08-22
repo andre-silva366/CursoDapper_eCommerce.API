@@ -20,30 +20,44 @@ public class UsuarioRepository : IRepository<Usuario>
         //return _connection.Query<Usuario>("SELECT * FROM Usuarios").ToList();
 
         List<Usuario> usuarios = [];
+        Usuario usuario = new Usuario();
 
-        string query = "SELECT * FROM Usuarios AS U LEFT JOIN Contatos C ON C.UsuarioId = U.Id LEFT JOIN EnderecosEntrega AS EE ON EE.UsuarioId = u.Id;";
+        string query = "SELECT U.*, C.*, EE.*, D.* FROM Usuarios U LEFT JOIN Contatos C ON C.UsuarioId = U.Id LEFT JOIN EnderecosEntrega EE ON EE.UsuarioId = U.Id LEFT JOIN UsuariosDepartamentos UD ON UD.UsuarioId = U.Id LEFT JOIN Departamentos D ON D.Id = UD.DepartamentoId;";
 
         // usuario é o principal
         // Essa função anonima é executava uma vez por linha
         // Evita duplicidade
-        _connection.Query<Usuario, Contato, EnderecoEntrega, Usuario>(query,
-            (usuario, contato, enderecoEntrega) =>
-            {
+        _connection.Query<Usuario, Contato, EnderecoEntrega, Departamento,Usuario>(query,
+            (usuario, contato, enderecoEntrega, departamento) =>
+            {              
+
                 // Verifica se já existe o usuário
-                if(usuarios.SingleOrDefault(u => u.Id == usuario.Id) == null)
+
+                var existeUsuario = usuarios.SingleOrDefault(u => u.Id == usuario.Id);
+                if ( existeUsuario == null)
                 {
                     usuario.EnderecoEntrega = new List<EnderecoEntrega>();
+                    usuario.Departamentos = new List<Departamento>();
                     usuario.Contato = contato;
                     usuarios.Add(usuario);
+                    existeUsuario = usuario;
                 }
-                else
+                
+                // Verifica se o endereço já existe
+                
+                if (enderecoEntrega != null && existeUsuario.EnderecoEntrega.SingleOrDefault(e => e.Id == enderecoEntrega.Id) == null)
                 {
-                    usuario = usuarios.SingleOrDefault(u => u.Id == usuario.Id);
+                    existeUsuario.EnderecoEntrega.Add(enderecoEntrega);
                 }
 
-                usuario.EnderecoEntrega.Add(enderecoEntrega);
 
-                return usuario;
+                // Verificação do departamento
+                if (departamento!= null && existeUsuario.Departamentos.SingleOrDefault(d => d.Id == departamento.Id) == null)
+                {
+                    existeUsuario.Departamentos.Add(departamento);
+                }                
+
+                return existeUsuario;
             });
         return usuarios;
     }
@@ -51,34 +65,46 @@ public class UsuarioRepository : IRepository<Usuario>
     public Usuario? Get(int id)
     {
         List<Usuario> usuarios = [];
+        Usuario usuario = new Usuario();
 
-        string query = "SELECT * FROM Usuarios AS U LEFT JOIN Contatos C ON C.UsuarioId = U.Id LEFT JOIN EnderecosEntrega AS EE ON EE.UsuarioId = u.Id WHERE U.Id = @Id;";
+        string query = "SELECT U.*, C.*, EE.*, D.* FROM Usuarios U LEFT JOIN Contatos C ON C.UsuarioId = U.Id LEFT JOIN EnderecosEntrega EE ON EE.UsuarioId = U.Id LEFT JOIN UsuariosDepartamentos UD ON UD.UsuarioId = U.Id LEFT JOIN Departamentos D ON D.Id = UD.DepartamentoId WHERE U.Id = @Id;";
 
         // usuario é o principal
         // Essa função anonima é executava uma vez por linha
         // Evita duplicidade
-        _connection.Query<Usuario, Contato, EnderecoEntrega, Usuario>(query,
-            (usuario, contato, enderecoEntrega) =>
+        _connection.Query<Usuario, Contato, EnderecoEntrega, Departamento, Usuario>(query,
+            (usuario, contato, enderecoEntrega, departamento) =>
             {
+
                 // Verifica se já existe o usuário
-                if (usuarios.SingleOrDefault(u => u.Id == usuario.Id) == null)
+
+                var existeUsuario = usuarios.SingleOrDefault(u => u.Id == usuario.Id);
+                if (existeUsuario == null)
                 {
                     usuario.EnderecoEntrega = new List<EnderecoEntrega>();
+                    usuario.Departamentos = new List<Departamento>();
                     usuario.Contato = contato;
                     usuarios.Add(usuario);
+                    existeUsuario = usuario;
                 }
-                else
+
+                // Verifica se o endereço já existe
+
+                if (enderecoEntrega != null && existeUsuario.EnderecoEntrega.SingleOrDefault(e => e.Id == enderecoEntrega.Id) == null)
                 {
-                    usuario = usuarios.SingleOrDefault(u => u.Id == usuario.Id);
+                    existeUsuario.EnderecoEntrega.Add(enderecoEntrega);
                 }
 
-                usuario.EnderecoEntrega.Add(enderecoEntrega);
 
-                return usuario;
+                // Verificação do departamento
+                if (departamento != null && existeUsuario.Departamentos.SingleOrDefault(d => d.Id == departamento.Id) == null)
+                {
+                    existeUsuario.Departamentos.Add(departamento);
+                }
+
+                return existeUsuario;
             },new {Id = id});
-
-        // Para que retorne somente um usuario, foi aproveitada a lógica do método acima
-        return usuarios.SingleOrDefault();
+        return usuarios.FirstOrDefault();
     }
 
     public void Insert(Usuario usuario)
@@ -114,6 +140,16 @@ public class UsuarioRepository : IRepository<Usuario>
                     string queryEndereco = "INSERT INTO EnderecosEntrega (UsuarioId, NomeEndereco, CEP, Estado, Cidade, Bairro, Endereco, Numero, Complemento) VALUES (@UsuarioId, @NomeEndereco, @CEP, @Estado, @Cidade, @Bairro, @Endereco, @Numero, @Complemento);SELECT CAST (SCOPE_IDENTITY() AS INT);";
                     
                       enderecoEntrega.Id = _connection.Query<int>(queryEndereco, enderecoEntrega, transaction).Single();
+                }
+            }
+
+            // Verificando se o usuario possui departamento
+            if(usuario.Departamentos != null && usuario.Departamentos.Count > 0)
+            {
+                foreach (var departamento in usuario.Departamentos)
+                {
+                    string queryUsuarioDepartamento = "INSERT INTO UsuariosDepartamentos (UsuarioId, DepartamentoId) VALUES (@UsuarioId, @DepartamentoId);";
+                    _connection.Execute(queryUsuarioDepartamento, new {UsuarioId = usuario.Id,DepartamentoId = departamento.Id}, transaction);
                 }
             }
 
@@ -168,6 +204,21 @@ public class UsuarioRepository : IRepository<Usuario>
                     string queryEndereco = "INSERT INTO EnderecosEntrega (UsuarioId, NomeEndereco, CEP, Estado, Cidade, Bairro, Endereco, Numero, Complemento) VALUES (@UsuarioId, @NomeEndereco, @CEP, @Estado, @Cidade, @Bairro, @Endereco, @Numero, @Complemento);SELECT CAST (SCOPE_IDENTITY() AS INT);";
 
                     enderecoEntrega.Id = _connection.Query<int>(queryEndereco, enderecoEntrega, transaction).Single();
+                }
+            }
+
+            // Deletando os departamentos
+            string queryDeleteDepartamentos = "DELETE FROM UsuariosDepartamentos WHERE UsuarioId = @Id";
+            _connection.Execute(queryDeleteDepartamentos, usuario, transaction);
+
+            if (usuario.Departamentos != null && usuario.Departamentos.Count > 0)
+            {
+                foreach (var departamento in usuario.Departamentos)
+                {
+                    
+                    string queryDepartamento = "INSERT INTO UsuariosDepartamentos (UsuarioId, DepartamentoId) VALUES (@UsuarioId, @DepartamentoId);";
+
+                    _connection.Execute(queryDepartamento, new {UsuarioId = usuario.Id, DepartamentoId = departamento.Id}, transaction);
                 }
             }
 
